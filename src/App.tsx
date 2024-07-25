@@ -5,184 +5,94 @@
 
 import "./App.scss";
 
-import type { ScreenViewport } from "@itwin/core-frontend";
-import { FitViewTool, IModelApp, StandardViewId } from "@itwin/core-frontend";
-import { FillCentered } from "@itwin/core-react";
-import { ProgressLinear } from "@itwin/itwinui-react";
-import {
-  MeasurementActionToolbar,
-  MeasureTools,
-  MeasureToolsUiItemsProvider,
-} from "@itwin/measure-tools-react";
-import {
-  AncestorsNavigationControls,
-  CopyPropertyTextContextMenuItem,
-  PropertyGridManager,
-  PropertyGridUiItemsProvider,
-  ShowHideNullValuesSettingsMenuItem,
-} from "@itwin/property-grid-react";
-import {
-  TreeWidget,
-  TreeWidgetUiItemsProvider,
-} from "@itwin/tree-widget-react";
-import {
-  useAccessToken,
-  Viewer,
-  ViewerContentToolsProvider,
-  ViewerNavigationToolsProvider,
-  ViewerPerformance,
-  ViewerStatusbarItemsProvider,
-} from "@itwin/web-viewer-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { DropdownMenu, Table } from "@itwin/itwinui-react";
+import React, {useEffect, useState} from "react";
 
-import { Auth } from "./Auth";
-import { history } from "./history";
+import { CellProps } from "@itwin/itwinui-react/cjs/react-table/react-table";
+// import { SvgMore } from "@itwin/itwinui-react/cjs/utils";
 
+const d: any[]=[];
 const App: React.FC = () => {
-  const [iModelId, setIModelId] = useState(process.env.IMJS_IMODEL_ID);
-  const [iTwinId, setITwinId] = useState(process.env.IMJS_ITWIN_ID);
-  const [changesetId, setChangesetId] = useState(
-    process.env.IMJS_AUTH_CLIENT_CHANGESET_ID
-  );
-
-  const accessToken = useAccessToken();
-
-  const authClient = Auth.getClient();
-
-  const login = useCallback(async () => {
-    try {
-      await authClient.signInSilent();
-    } catch {
-      await authClient.signIn();
-    }
-  }, [authClient]);
+  const [data, setData] = useState<any[]>([]);
 
   useEffect(() => {
-    void login();
-  }, [login]);
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has("iTwinId")) {
-      setITwinId(urlParams.get("iTwinId") as string);
+    for (let i=0; i<100; i++) {
+      d.push({ name: `danish ${i}`, description: "test" });
     }
-    if (urlParams.has("iModelId")) {
-      setIModelId(urlParams.get("iModelId") as string);
-    }
-    if (urlParams.has("changesetId")) {
-      setChangesetId(urlParams.get("changesetId") as string);
-    }
+    setData(d);
   }, []);
 
-  useEffect(() => {
-    let url = `viewer?iTwinId=${iTwinId}`;
+  const columns = [
+      {
+        Header: "Table",
+        columns: [
+          {
+            id: "name",
+            Header: "Name",
+            accessor: "name",
+            maxWidth: 350,
+            Cell: (props: CellProps<any>) => (
+              <div
+                data-tip={props.row.original.name}
+                className="iac-iModelCell"
+              >
+                <span>{props.value}</span>
+              </div>
+            ),
+          },
+          {
+            id: "description",
+            Header: "Description",
+            accessor: "description",
+            disableSortBy: true,
+          },
+          {
+            id: "LastModified",
+            Header: "Created Date Time",
+            accessor: "createdDateTime",
+            maxWidth: 350,
+            Cell: (props: CellProps<any>) => {
+              const date = props.data[props.row.index].createdDateTime;
+              return date ? new Date(date).toDateString() : "";
+            },
+          },
+          {
+            id: "options",
+            style: { width: "50px" },
+            disableSortBy: true,
+            maxWidth: 50,
+            Cell: (props: CellProps<any>) => {
+              const moreOptions = (close: () => void) => {
+                const options = undefined;
+                return options !== undefined ? options : [];
+              };
 
-    if (iModelId) {
-      url = `${url}&iModelId=${iModelId}`;
-    }
+              return (
+                <DropdownMenu menuItems={moreOptions}>
+                  <div
+                    className="iac-options-icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    MORE
+                  </div>
+                </DropdownMenu>
+              );
+            },
+          },
+        ],
+      },
+    ];
 
-    if (changesetId) {
-      url = `${url}&changesetId=${changesetId}`;
-    }
-    history.push(url);
-  }, [iTwinId, iModelId, changesetId]);
-
-  /** NOTE: This function will execute the "Fit View" tool after the iModel is loaded into the Viewer.
-   * This will provide an "optimal" view of the model. However, it will override any default views that are
-   * stored in the iModel. Delete this function and the prop that it is passed to if you prefer
-   * to honor default views when they are present instead (the Viewer will still apply a similar function to iModels that do not have a default view).
-   */
-  const viewConfiguration = useCallback((viewPort: ScreenViewport) => {
-    // default execute the fitview tool and use the iso standard view after tile trees are loaded
-    const tileTreesLoaded = () => {
-      return new Promise((resolve, reject) => {
-        const start = new Date();
-        const intvl = setInterval(() => {
-          if (viewPort.areAllTileTreesLoaded) {
-            ViewerPerformance.addMark("TilesLoaded");
-            ViewerPerformance.addMeasure(
-              "TileTreesLoaded",
-              "ViewerStarting",
-              "TilesLoaded"
-            );
-            clearInterval(intvl);
-            resolve(true);
-          }
-          const now = new Date();
-          // after 20 seconds, stop waiting and fit the view
-          if (now.getTime() - start.getTime() > 20000) {
-            reject();
-          }
-        }, 100);
-      });
-    };
-
-    tileTreesLoaded().finally(() => {
-      void IModelApp.tools.run(FitViewTool.toolId, viewPort, true, false);
-      viewPort.view.setStandardRotation(StandardViewId.Iso);
-    });
-  }, []);
-
-  const viewCreatorOptions = useMemo(
-    () => ({ viewportConfigurer: viewConfiguration }),
-    [viewConfiguration]
-  );
-
-  const onIModelAppInit = useCallback(async () => {
-    // iModel now initialized
-    await TreeWidget.initialize();
-    await PropertyGridManager.initialize();
-    await MeasureTools.startup();
-    MeasurementActionToolbar.setDefaultActionProvider();
-  }, []);
-
+  console.log("DATA", data);
   return (
     <div className="viewer-container">
-      {!accessToken && (
-        <FillCentered>
-          <div className="signin-content">
-            <ProgressLinear indeterminate={true} labels={["Signing in..."]} />
-          </div>
-        </FillCentered>
-      )}
-      <Viewer
-        iTwinId={iTwinId ?? ""}
-        iModelId={iModelId ?? ""}
-        changeSetId={changesetId}
-        authClient={authClient}
-        viewCreatorOptions={viewCreatorOptions}
-        enablePerformanceMonitors={true} // see description in the README (https://www.npmjs.com/package/@itwin/web-viewer-react)
-        onIModelAppInit={onIModelAppInit}
-        uiProviders={[
-          new ViewerNavigationToolsProvider(),
-          new ViewerContentToolsProvider({
-            vertical: {
-              measureGroup: false,
-            },
-          }),
-          new ViewerStatusbarItemsProvider(),
-          new TreeWidgetUiItemsProvider(),
-          new PropertyGridUiItemsProvider({
-            propertyGridProps: {
-              autoExpandChildCategories: true,
-              ancestorsNavigationControls: (props) => (
-                <AncestorsNavigationControls {...props} />
-              ),
-              contextMenuItems: [
-                (props) => <CopyPropertyTextContextMenuItem {...props} />,
-              ],
-              settingsMenuItems: [
-                (props) => (
-                  <ShowHideNullValuesSettingsMenuItem
-                    {...props}
-                    persist={true}
-                  />
-                ),
-              ],
-            },
-          }),
-          new MeasureToolsUiItemsProvider(),
-        ]}
+      <button onClick={() => setData([{ name: "danish", description: "test", fal: "aa" }])}>CLICK ME!</button>
+      <Table
+        columns={columns}
+        data={data}
+        emptyTableContent={data.length === 0 ? "EMPTY..." : "LOADING..."}
       />
     </div>
   );
